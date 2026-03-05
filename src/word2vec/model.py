@@ -73,3 +73,40 @@ class SkipGramNS:
         self.w_in[center_id] -= lr * grads.grad_w_in
         self.w_out[context_id] -= lr * grads.grad_w_out_ctx
         self.w_out[negative_ids] -= lr * grads.grad_w_out_neg
+
+    def train_batch(
+        self,
+        center_ids: np.ndarray,
+        context_ids: np.ndarray,
+        negative_ids: np.ndarray,
+        lr: float,
+    ) -> float:
+        """Vectorized forward + backward + update for a batch. Returns total batch loss."""
+        # center_ids: (B,), context_ids: (B,), negative_ids: (B, K)
+        v_centers = self.w_in[center_ids]  # (B, D)
+        v_contexts = self.w_out[context_ids]  # (B, D)
+        v_negatives = self.w_out[negative_ids]  # (B, K, D)
+
+        # Forward — positive: element-wise multiply + sum along D
+        pos_scores = np.sum(v_centers * v_contexts, axis=1)  # (B,)
+        sig_pos = sigmoid(pos_scores)  # (B,)
+
+        # Forward — negative: each center dot its K negatives
+        neg_scores = np.einsum("bd,bkd->bk", v_centers, v_negatives)  # (B, K)
+        sig_neg = sigmoid(neg_scores)  # (B, K)
+
+        # Loss
+        batch_loss = -np.sum(np.log(sig_pos + 1e-10)) - np.sum(np.log(1 - sig_neg + 1e-10))
+
+        # Gradients
+        sp1 = (sig_pos - 1.0)[:, np.newaxis]  # (B, 1)
+        grad_w_in = sp1 * v_contexts + np.einsum("bk,bkd->bd", sig_neg, v_negatives)
+        grad_w_out_ctx = sp1 * v_centers  # (B, D)
+        grad_w_out_neg = sig_neg[:, :, np.newaxis] * v_centers[:, np.newaxis, :]
+
+        # Update — use np.add.at for correct accumulation of duplicate indices
+        np.add.at(self.w_in, center_ids, -lr * grad_w_in)
+        np.add.at(self.w_out, context_ids, -lr * grad_w_out_ctx)
+        np.add.at(self.w_out, negative_ids, -lr * grad_w_out_neg)
+
+        return float(batch_loss)

@@ -45,8 +45,8 @@ def apply_subsampling(
     return token_ids[keep_mask]
 
 
-def generate_training_pairs(corpus: np.ndarray, window_size: int = 5) -> list[tuple[int, int]]:
-    """Generate (center, context) pairs using a sliding window over the corpus."""
+def generate_training_pairs(corpus: np.ndarray, window_size: int = 5) -> np.ndarray:
+    """Generate (center, context) pairs using a sliding window. Returns (N, 2) array."""
     pairs = []
     n = len(corpus)
     for i in range(n):
@@ -56,10 +56,11 @@ def generate_training_pairs(corpus: np.ndarray, window_size: int = 5) -> list[tu
         for j in range(start, end):
             if j != i:
                 pairs.append((center, corpus[j]))
-    return pairs
+    return np.array(pairs, dtype=np.int64)
+
 
 def build_negative_sampling_table(freqs: np.ndarray, table_size: int = 10_000_000) -> np.ndarray:
-    powered = freqs ** 0.75                                                                                                          
+    powered = freqs**0.75
     probs = powered / powered.sum()
     counts = (probs * table_size).astype(np.int64)
     return np.repeat(np.arange(len(freqs)), counts)
