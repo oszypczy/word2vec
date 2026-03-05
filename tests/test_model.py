@@ -75,3 +75,19 @@ def test_gradient_check():
         numerical_grad_out_neg0[i] = (loss_plus - loss_minus) / (2 * epsilon)
 
     np.testing.assert_allclose(grad_out_neg[0], numerical_grad_out_neg0, rtol=1e-4, atol=1e-6)
+
+
+def test_update_reduces_loss():
+    """After one SGD step, loss for the same example should decrease."""
+    model = SkipGramNS(vocab_size=20, embedding_dim=10, seed=42)
+    center_id = 3
+    context_id = 7
+    negative_ids = np.array([1, 5, 12])
+
+    grads = model.compute_gradients(center_id, context_id, negative_ids)
+    loss_before = grads.loss
+
+    model.update(center_id, context_id, negative_ids, grads, lr=0.1)
+
+    loss_after = model.compute_loss(center_id, context_id, negative_ids)
+    assert loss_after < loss_before, f"Loss should decrease: {loss_before} -> {loss_after}"

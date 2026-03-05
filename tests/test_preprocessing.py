@@ -1,6 +1,7 @@
 import numpy as np
 
 from word2vec.preprocessing import (
+    build_negative_sampling_table,
     build_vocab,
     generate_training_pairs,
     subsample_probs,
@@ -52,3 +53,19 @@ def test_generate_training_pairs():
     pairs_for_center_2 = [(c, ctx) for c, ctx in pairs if c == 2]
     contexts = {ctx for _, ctx in pairs_for_center_2}
     assert contexts == {0, 1, 3, 4}
+
+
+def test_negative_sampling_table():
+    """Sampling distribution should approximate freq^0.75."""
+    freqs = np.array([1000, 100, 10, 1], dtype=np.float64)
+    table = build_negative_sampling_table(freqs, table_size=100_000)
+
+    # Count how often each index appears
+    counts = np.bincount(table, minlength=len(freqs))
+    empirical = counts / counts.sum()
+
+    # Expected distribution: freq^0.75 / sum(freq^0.75)
+    powered = freqs**0.75
+    expected = powered / powered.sum()
+
+    np.testing.assert_allclose(empirical, expected, atol=0.02)
