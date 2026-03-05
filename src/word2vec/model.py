@@ -29,8 +29,10 @@ class SkipGramNS:
     def __post_init__(self) -> None:
         rng = np.random.default_rng(self.seed)
         scale = 0.5 / self.embedding_dim
-        self.w_in = rng.uniform(-scale, scale, (self.vocab_size, self.embedding_dim))
-        self.w_out = np.zeros((self.vocab_size, self.embedding_dim))
+        self.w_in = rng.uniform(-scale, scale, (self.vocab_size, self.embedding_dim)).astype(
+            np.float32
+        )
+        self.w_out = np.zeros((self.vocab_size, self.embedding_dim), dtype=np.float32)
 
     def forward(self, center_id: int, context_ids: np.ndarray) -> np.ndarray:
         v_center = self.w_in[center_id]
@@ -42,7 +44,7 @@ class SkipGramNS:
         v_center = self.w_in[center_id]
         sig_pos = sigmoid(v_center @ self.w_out[context_id])
         sig_neg = sigmoid(self.w_out[negative_ids] @ v_center)
-        return -np.log(sig_pos + 1e-10) - np.sum(np.log(1 - sig_neg + 1e-10))
+        return -np.log(sig_pos + 1e-7) - np.sum(np.log(1 - sig_neg + 1e-7))
 
     def compute_gradients(
         self, center_id: int, context_id: int, negative_ids: np.ndarray
@@ -55,7 +57,7 @@ class SkipGramNS:
         sig_pos = sigmoid(v_center @ v_context)
         sig_neg = sigmoid(v_negatives @ v_center)
 
-        loss = -np.log(sig_pos + 1e-10) - np.sum(np.log(1 - sig_neg + 1e-10))
+        loss = -np.log(sig_pos + 1e-7) - np.sum(np.log(1 - sig_neg + 1e-7))
         grad_w_in = (sig_pos - 1) * v_context + sig_neg @ v_negatives
         grad_w_out_ctx = (sig_pos - 1) * v_center
         grad_w_out_neg = sig_neg[:, np.newaxis] * v_center[np.newaxis, :]
@@ -96,7 +98,7 @@ class SkipGramNS:
         sig_neg = sigmoid(neg_scores)  # (B, K)
 
         # Loss
-        batch_loss = -np.sum(np.log(sig_pos + 1e-10)) - np.sum(np.log(1 - sig_neg + 1e-10))
+        batch_loss = -np.sum(np.log(sig_pos + 1e-7)) - np.sum(np.log(1 - sig_neg + 1e-7))
 
         # Gradients
         sp1 = (sig_pos - 1.0)[:, np.newaxis]  # (B, 1)

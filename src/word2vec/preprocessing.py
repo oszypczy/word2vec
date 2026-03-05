@@ -46,17 +46,22 @@ def apply_subsampling(
 
 
 def generate_training_pairs(corpus: np.ndarray, window_size: int = 5) -> np.ndarray:
-    """Generate (center, context) pairs using a sliding window. Returns (N, 2) array."""
-    pairs = []
+    """Generate (center, context) pairs using vectorized offset slicing. Returns (N, 2) array."""
+    all_centers = []
+    all_contexts = []
     n = len(corpus)
-    for i in range(n):
-        center = corpus[i]
-        start = max(0, i - window_size)
-        end = min(n, i + window_size + 1)
-        for j in range(start, end):
-            if j != i:
-                pairs.append((center, corpus[j]))
-    return np.array(pairs, dtype=np.int64)
+
+    for offset in range(1, window_size + 1):
+        # Positive offset: context is to the right of center
+        all_centers.append(corpus[: n - offset])
+        all_contexts.append(corpus[offset:])
+        # Negative offset: context is to the left of center
+        all_centers.append(corpus[offset:])
+        all_contexts.append(corpus[: n - offset])
+
+    centers = np.concatenate(all_centers)
+    contexts = np.concatenate(all_contexts)
+    return np.column_stack((centers, contexts))
 
 
 def build_negative_sampling_table(freqs: np.ndarray, table_size: int = 10_000_000) -> np.ndarray:
