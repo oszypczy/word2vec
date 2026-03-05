@@ -12,7 +12,7 @@ def train_epoch(
     neg_samples: int,
     rng: np.random.Generator,
     epoch_desc: str = "",
-    batch_size: int = 512,
+    batch_size: int = 256,
 ) -> float:
     """Train one epoch over all training pairs. Returns average loss."""
     total_loss = 0.0

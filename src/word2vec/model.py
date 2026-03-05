@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import NamedTuple
 
+import numba as nb
 import numpy as np
 
 
@@ -18,6 +19,81 @@ def sigmoid(x: np.ndarray) -> np.ndarray:
         1.0 / (1.0 + np.exp(-x)),
         np.exp(x) / (1.0 + np.exp(x)),
     )
+
+
+@nb.njit(cache=True, fastmath=True)
+def _sigmoid_scalar(x: float) -> float:
+    """Numerically stable sigmoid for a single scalar."""
+    if x >= 0:
+        return 1.0 / (1.0 + np.exp(-x))
+    ex = np.exp(x)
+    return ex / (1.0 + ex)
+
+
+@nb.njit(cache=True, fastmath=True, parallel=True)
+def _train_batch_jit(
+    w_in: np.ndarray,
+    w_out: np.ndarray,
+    center_ids: np.ndarray,
+    context_ids: np.ndarray,
+    negative_ids: np.ndarray,
+    lr: float,
+) -> float:
+    """JIT-compiled train_batch: forward + backward + SGD update.
+
+    Replaces np.einsum and np.add.at with explicit loops that Numba compiles
+    to efficient native code with no temporary array allocations.
+    """
+    batch_size = center_ids.shape[0]
+    neg_count = negative_ids.shape[1]
+    dim = w_in.shape[1]
+    total_loss = 0.0
+
+    for i in nb.prange(batch_size):
+        c_id = center_ids[i]
+        ctx_id = context_ids[i]
+
+        # --- forward: positive score ---
+        pos_dot = 0.0
+        for d in range(dim):
+            pos_dot += w_in[c_id, d] * w_out[ctx_id, d]
+        sig_pos = _sigmoid_scalar(pos_dot)
+
+        # --- forward: negative scores + loss ---
+        loss_i = -np.log(sig_pos + 1e-7)
+
+        # Accumulate gradient for w_in[c_id] in a local buffer
+        grad_center = np.empty(dim, dtype=np.float32)
+        for d in range(dim):
+            grad_center[d] = (sig_pos - 1.0) * w_out[ctx_id, d]
+
+        for k in range(neg_count):
+            n_id = negative_ids[i, k]
+            neg_dot = 0.0
+            for d in range(dim):
+                neg_dot += w_in[c_id, d] * w_out[n_id, d]
+            sig_neg = _sigmoid_scalar(neg_dot)
+            loss_i -= np.log(1.0 - sig_neg + 1e-7)
+
+            # Accumulate grad for center from this negative
+            for d in range(dim):
+                grad_center[d] += sig_neg * w_out[n_id, d]
+
+            # Update w_out[n_id] (negative output embedding)
+            for d in range(dim):
+                w_out[n_id, d] -= lr * sig_neg * w_in[c_id, d]
+
+        # Update w_out[ctx_id] (positive context embedding)
+        for d in range(dim):
+            w_out[ctx_id, d] -= lr * (sig_pos - 1.0) * w_in[c_id, d]
+
+        # Update w_in[c_id] (center embedding)
+        for d in range(dim):
+            w_in[c_id, d] -= lr * grad_center[d]
+
+        total_loss += loss_i
+
+    return total_loss
 
 
 @dataclass
@@ -83,32 +159,7 @@ class SkipGramNS:
         negative_ids: np.ndarray,
         lr: float,
     ) -> float:
-        """Vectorized forward + backward + update for a batch. Returns total batch loss."""
-        # center_ids: (B,), context_ids: (B,), negative_ids: (B, K)
-        v_centers = self.w_in[center_ids]  # (B, D)
-        v_contexts = self.w_out[context_ids]  # (B, D)
-        v_negatives = self.w_out[negative_ids]  # (B, K, D)
-
-        # Forward — positive: element-wise multiply + sum along D
-        pos_scores = np.sum(v_centers * v_contexts, axis=1)  # (B,)
-        sig_pos = sigmoid(pos_scores)  # (B,)
-
-        # Forward — negative: each center dot its K negatives
-        neg_scores = np.einsum("bd,bkd->bk", v_centers, v_negatives)  # (B, K)
-        sig_neg = sigmoid(neg_scores)  # (B, K)
-
-        # Loss
-        batch_loss = -np.sum(np.log(sig_pos + 1e-7)) - np.sum(np.log(1 - sig_neg + 1e-7))
-
-        # Gradients
-        sp1 = (sig_pos - 1.0)[:, np.newaxis]  # (B, 1)
-        grad_w_in = sp1 * v_contexts + np.einsum("bk,bkd->bd", sig_neg, v_negatives)
-        grad_w_out_ctx = sp1 * v_centers  # (B, D)
-        grad_w_out_neg = sig_neg[:, :, np.newaxis] * v_centers[:, np.newaxis, :]
-
-        # Update — use np.add.at for correct accumulation of duplicate indices
-        np.add.at(self.w_in, center_ids, -lr * grad_w_in)
-        np.add.at(self.w_out, context_ids, -lr * grad_w_out_ctx)
-        np.add.at(self.w_out, negative_ids, -lr * grad_w_out_neg)
-
-        return float(batch_loss)
+        """JIT-accelerated forward + backward + update for a batch. Returns total batch loss."""
+        return _train_batch_jit(
+            self.w_in, self.w_out, center_ids, context_ids, negative_ids, lr
+        )
