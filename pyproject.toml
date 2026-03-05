@@ -20,6 +20,12 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.9",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.9",
+]
 notebook = [
     "matplotlib>=3.9",
     "scikit-learn>=1.5",
