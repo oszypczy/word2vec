@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Self
 
 import numba as nb
 import numpy as np
@@ -176,7 +176,7 @@ class SkipGramNS:
         )
 
     @classmethod
-    def load(cls, path: str | Path) -> "SkipGramNS":
+    def load(cls, path: str | Path) -> Self:
         """Load model weights from a .npz file."""
         data = np.load(path)
         model = cls(

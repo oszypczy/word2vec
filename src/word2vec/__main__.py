@@ -13,6 +13,7 @@ from rich.table import Table
 
 from word2vec.model import SkipGramNS
 from word2vec.preprocessing import (
+    Vocabulary,
     apply_subsampling,
     build_negative_sampling_table,
     build_vocab,
@@ -43,7 +44,7 @@ def load_text8(data_dir: str = "data") -> str:
     return text_file.read_text()
 
 
-def show_neighbors(model: SkipGramNS, vocab: object, query_words: list[str]) -> None:
+def show_neighbors(model: SkipGramNS, vocab: Vocabulary, query_words: list[str]) -> None:
     """Display nearest neighbors as a rich table."""
     table = Table(title="Nearest Neighbors", show_lines=True)
     table.add_column("Word", style="bold cyan")
