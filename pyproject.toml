@@ -30,6 +30,8 @@ notebook = [
     "matplotlib>=3.9",
     "scikit-learn>=1.5",
     "jupyter>=1.0",
+    "optuna>=4.0",
+    "scipy>=1.14",
 ]
 
 [build-system]
