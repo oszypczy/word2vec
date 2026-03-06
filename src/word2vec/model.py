@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import NamedTuple
 
 import numba as nb
@@ -163,3 +164,25 @@ class SkipGramNS:
         return _train_batch_jit(
             self.w_in, self.w_out, center_ids, context_ids, negative_ids, lr
         )
+
+    def save(self, path: str | Path) -> None:
+        """Save model weights to a .npz file."""
+        np.savez(
+            path,
+            w_in=self.w_in,
+            w_out=self.w_out,
+            vocab_size=self.vocab_size,
+            embedding_dim=self.embedding_dim,
+        )
+
+    @classmethod
+    def load(cls, path: str | Path) -> "SkipGramNS":
+        """Load model weights from a .npz file."""
+        data = np.load(path)
+        model = cls(
+            vocab_size=int(data["vocab_size"]),
+            embedding_dim=int(data["embedding_dim"]),
+        )
+        model.w_in = data["w_in"]
+        model.w_out = data["w_out"]
+        return model

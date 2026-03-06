@@ -91,3 +91,20 @@ def test_update_reduces_loss():
 
     loss_after = model.compute_loss(center_id, context_id, negative_ids)
     assert loss_after < loss_before, f"Loss should decrease: {loss_before} -> {loss_after}"
+
+
+def test_save_load_roundtrip(tmp_path):
+    """Save and load should produce identical weights."""
+    model = SkipGramNS(vocab_size=50, embedding_dim=16, seed=123)
+    # Train one step so weights differ from init
+    model.w_in[0] += 1.0
+    model.w_out[1] -= 0.5
+
+    path = tmp_path / "model.npz"
+    model.save(path)
+    loaded = SkipGramNS.load(path)
+
+    assert loaded.vocab_size == model.vocab_size
+    assert loaded.embedding_dim == model.embedding_dim
+    np.testing.assert_array_equal(loaded.w_in, model.w_in)
+    np.testing.assert_array_equal(loaded.w_out, model.w_out)
